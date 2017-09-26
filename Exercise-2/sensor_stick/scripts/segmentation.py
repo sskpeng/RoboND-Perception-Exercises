@@ -23,15 +23,25 @@ def pcl_callback(pcl_msg):
     # pcl.save(cloud_filtered, filename)
 
     # TODO: PassThrough Filter
-    passthrough = cloud_filtered.make_passthrough_filter()
+    # Z direction
+    passthrough_1 = cloud_filtered.make_passthrough_filter()
 
-    filter_axis = 'z'
-    passthrough.set_filter_field_name(filter_axis)
-    axis_min = 0.6
-    axis_max = 1.2
-    passthrough.set_filter_limits(axis_min, axis_max)
+    filter_axis_1 = 'z'
+    passthrough_1.set_filter_field_name(filter_axis_1)
+    axis_1_min = 0.6
+    axis_1_max = 1.2
+    passthrough_1.set_filter_limits(axis_1_min, axis_1_max)
+    cloud_filtered = passthrough_1.filter()
 
-    cloud_filtered = passthrough.filter()
+    # X direction
+    passthrough_2 = cloud_filtered.make_passthrough_filter()
+
+    filter_axis_2 = 'y'
+    passthrough_2.set_filter_field_name(filter_axis_2)
+    axis_2_min = -10
+    axis_2_max = 10
+    passthrough_2.set_filter_limits(axis_2_min, axis_2_max)
+    cloud_filtered = passthrough_2.filter()
     # filename = 'pass_through_filter.pcd'
     # pcl.save(cloud_filtered, filename)
 
@@ -75,13 +85,14 @@ def pcl_callback(pcl_msg):
     # as well as minimum and maximum cluster size (in points)
     # NOTE: These are poor choices of clustering parameters
     # Your task is to experiment and find values that work for segmenting objects.
-    ec.set_ClusterTolerance(0.001)
-    ec.set_MinClusterSize(5)
-    ec.set_MaxClusterSize(250)
+    ec.set_ClusterTolerance(0.05)
+    ec.set_MinClusterSize(10)
+    ec.set_MaxClusterSize(1000)
     # Search the k-d tree for clusters
     ec.set_SearchMethod(tree)
     # Extract indices for each of the discovered clusters
     cluster_indices = ec.Extract()
+    print "cluster_indices=", len(cluster_indices)
 
     #Assign a color corresponding to each segmented object in scene
     cluster_color = get_color_list(len(cluster_indices))
@@ -108,6 +119,7 @@ def pcl_callback(pcl_msg):
     # TODO: Publish ROS messages
     pcl_objects_pub.publish(ros_cloud_objects)
     pcl_table_pub.publish(ros_cloud_table)
+    pcl_cluster_pub.publish(ros_cluster_cloud)
 
 
 if __name__ == '__main__':
@@ -121,6 +133,7 @@ if __name__ == '__main__':
     # TODO: Create Publishers
     pcl_objects_pub = rospy.Publisher("/pcl_objects", PointCloud2, queue_size=1)
     pcl_table_pub = rospy.Publisher("/pcl_table", PointCloud2, queue_size=1)
+    pcl_cluster_pub = rospy.Publisher("/pcl_cluster", PointCloud2, queue_size=1)
 
     # Initialize color_list
     get_color_list.color_list = []
