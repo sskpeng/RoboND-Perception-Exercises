@@ -1,5 +1,6 @@
 # RoboND-Perception-Exercises Note
 This is a note taken for Module 4 Perception in RoboND. This module consisted the following lessons:
+
 1. Perception overview
 2. Introduction to 3D Perception
 3. Calibration, Filtering, and Segmentation
@@ -19,62 +20,147 @@ depth = depth_map[y,x]
 ```
 ## Calibration, Filtering, and Segmentation
 ### Calibration Pattern
-```
-$ cd ~/RoboND-Perception-Exercises/python-pcl
-$ python setup.py build
-$ sudo python setup.py install
-```
-
-### Install pcl-tools
-```
-$ sudo apt-get install pcl-tools
-```
+Use OpenCV functions `findCHessboardCorners()` and `drawChessboardCorners()` to automatically find and draw the "inner corners" on your images of the chessboard pattern.
 
 
-
-## Documentation for `pcl_helper.py`
-
-`pcl_helper.py` contains useful functions for working with point cloud data with ROS and PCL.  The file itself is located in `Exercise-2/sensor_stick/scripts/`.  While the helper functions are required for Exercise-2, they could also come in handy if you want to explore more deeply in Exercise-1.  Here's a brief description of the contents:
-
-#### Functions:
-`random_color_gen()`
 ```
-Generates a random set of r,g,b values
-Return: a 3-tuple with r,g,b values (range 0-255)
-```
+# Find the chessboard corners
+ret, corners = cv2.findChessboardCorners(gray, (nx, ny), None)
 
-`ros_to_pcl(sensor_msgs/PointCloud2)`
-```
-Converts sensor_msgs/PointCloud2 to XYZRGB Point Cloud
-Return: pcl.PointCloud_PointXYZRGB
+# If found, draw corners
+if ret == True:
+    # Draw and display the corners
+    cv2.drawChessboardCorners(img, (nx, ny), corners, ret)
+    plt.imshow(img)
 ```
 
-`pcl_to_ros(pcl.PointCloud_PointXYZRGB)`
+### Filtering
+Introducted a several commonly used filters form the Point Cloud Library. There filters are:
+
+1. VoxelGrid Downsamplying Filter
+2. ExtrachIndices Filter
+3. PassThrough Filter
+4. RANASAC Plane Fitting
+5. Outlier Removal Filter
+
+#### Voxel Grid Downsampling
+
+Voxel is short for "volume element". Similar to "pixel" for 2D pictures. Note: LEAF size is in unit of cubic meter in volume. 
+
 ```
-Converts XYZRGB Point Cloud to sensor_msgs/PointCloud2
-Return: sensor_msgs/PointCloud2
+# Create a VoxelGrid filter object for our input point cloud
+vox = cloud.make_voxel_grid_filter()
+
+# Choose a voxel (also known as leaf) size
+# Note: this (1) is a poor choice of leaf size   
+# Experiment and find the appropriate size!
+LEAF_SIZE = 1   
+
+# Set the voxel (or leaf) size  
+vox.set_leaf_size(LEAF_SIZE, LEAF_SIZE, LEAF_SIZE)
+
+# Call the filter function to obtain the resultant downsampled point cloud
+cloud_filtered = vox.filter()
+filename = 'voxel_downsampled.pcd'
+pcl.save(cloud_filtered, filename)
 ```
 
-`XYZRGB_to_XYZ(XYZRGB_cloud)`
+#### PassThrough Filter
+To filter out unecessary information if the target location is known.
+
 ```
-Converts XYZRGB Point Cloud to XYZ Point CLoud
-Return: pcl.PointCloud
+# PassThrough filter
+# Create a PassThrough filter object.
+passthrough = cloud_filtered.make_passthrough_filter()
+
+# Assign axis and range to the passthrough filter object.
+filter_axis = 'z'
+passthrough.set_filter_field_name(filter_axis)
+axis_min = 0
+axis_max = 2
+passthrough.set_filter_limits(axis_min, axis_max)
+
+# Finally use the filter function to obtain the resultant point cloud. 
+cloud_filtered = passthrough.filter()
+filename = 'pass_through_filtered.pcd'
+pcl.save(cloud_filtered, filename)
 ```
 
-`XYZ_to_XYZRGB(XYZ_cloud, color)`
+####  Random Sample Consensus or "RANSAC"
+RANSAC is an algorithm, that you can use to identify points in your dataset that belong to a particular model.
+
 ```
-Takes a 3-tuple as color and adds it to XYZ Point Cloud
-Return: pcl.PointCloud_PointXYZRGB
+# Set the model you wish to fit 
+seg.set_model_type(pcl.SACMODEL_PLANE)
+seg.set_method_type(pcl.SAC_RANSAC)
+
+# Max distance for a point to be considered fitting the model
+# Experiment with different values for max_distance 
+# for segmenting the table
+max_distance = 1
+seg.set_distance_threshold(max_distance)
+
+# Call the segment function to obtain set of inlier indices and model coefficients
+inliers, coefficients = seg.segment()
 ```
 
-`rgb_to_float(color)`
+#### Outlier Removal Filter
+To remove noise due to external factors.
+
 ```
-Converts 3-tuple color to a single float32
-Return: rgb packed as a single float32
+# Much like the previous filters, we start by creating a filter object: 
+outlier_filter = cloud_filtered.make_statistical_outlier_filter()
+
+# Set the number of neighboring points to analyze for any given point
+outlier_filter.set_mean_k(50)
+
+# Set threshold scale factor
+x = 1.0
+
+# Any point with a mean distance larger than global (mean distance+x*std_dev) will be considered outlier
+outlier_filter.set_std_dev_mul_thresh(x)
+
+# Finally call the filter function for magic
+cloud_filtered = outlier_filter.filter()
 ```
 
-`get_color_list(cluster_count)`
+## Clustering for Segmentation
+Clustering is a process to find similarities among individual points.
+K-means Clustering divides points into K clusters based on one or more features. 
+and Euclidean CLustering, points closed to each other are clustered together.
+
+Density-Based Spatial Clustering of Applications with Noise (DBSACN). Also known as "Euclidean Clustering". This algorithm is a nice alternative to k-means when you don' t know how many clusters to expect in your data, but you do know something about how the points should be clustered in terms of density (distance between points in a cluster).
+
+#### Euclidean Clustering
+In order to perform Euclidean Clustering, you must first construct a k-d tree from the cloud_objects point cloud. The k-d tree data structure is used in the Euclidian Clustering algorithm to decrease the computational burden of searching for neighboring points. 
+
+
 ```
-Creates a list of 3-tuple (rgb) with length of the list = cluster_count
-Return: get_color_list.color_list
+# Euclidean Clustering
+white_cloud = # Apply function to convert XYZRGB to XYZ
+tree = white_cloud.make_kdtree()
 ```
+```
+# Create a cluster extraction object
+ec = white_cloud.make_EuclideanClusterExtraction()
+# Set tolerances for distance threshold 
+# as well as minimum and maximum cluster size (in points)
+# NOTE: These are poor choices of clustering parameters
+# Your task is to experiment and find values that work for segmenting objects.
+ec.set_ClusterTolerance(0.001)
+ec.set_MinClusterSize(10)
+ec.set_MaxClusterSize(250)
+# Search the k-d tree for clusters
+ec.set_SearchMethod(tree)
+# Extract indices for each of the discovered clusters
+cluster_indices = ec.Extract()
+```
+
+## Object Recognition
+
+1. Color space
+2. HSV space
+3. Color Histograms
+4. Surface Normals
+5. Support Vector Machine (SVM)
+
